@@ -4,15 +4,17 @@ var LobbyFactory = require('./app/factories/LobbyFactory.js');
 var LobbyManagerService = require('./app/services/LobbyManagerService.js');
 "use strict";
 
-var lobbyPort = process.argv[2]; //It is argv[2] because elements 0 and 1 are already populated with env info
-var path = process.argv[3];
-var gameServerPort = process.argv[4];
-const io = require('socket.io')(lobbyPort);
+var lobbyConf = JSON.parse(process.argv[2]);
+var lobbyPort = process.argv[3]; //It is argv[2] because elements 0 and 1 are already populated with env info
+var path = process.argv[4];
+var gameServerPort = process.argv[5];
+
+
+//TODO: conf file
+const lobbyServer = require('socket.io')(lobbyPort);
+const io = require('socket.io-client');
 const repl = require('repl');
 
-const name = LobbyFactory.name;
-const creator = LobbyFactory.creator;
-const gamemode = LobbyFactory.gameMode;
 var map = 1;
 var player_id = 0;
 
@@ -35,51 +37,11 @@ const adminSettings = [{
     options: "*"
 }];
 
-const playerSettings = [{
-    binding: "champion",
-    name: "Champion",
-    help: "The champion you want to play",
-    field: "championSelect",
-    options: "available-champions"
-}, {
-    binding: "skin",
-    name: "Skin",
-    help: "Skinz",
-    field: "skinSelect",
-    options: "champion"
-}, {
-    binding: "summonerSpells",
-    name: "Summoner Spells",
-    help: "The summoner spells you want to use",
-    field: "summonerSpellSelect",
-    default: [7, 4],
-    options: "available-spells"
-}, {
-    binding: "text",
-    name: "Text",
-    help: "Foo",
-    field: "text",
-    default: "Text here..."
-}, {
-    binding: "check",
-    name: "Checkbox",
-    help: "Foo",
-    field: "checkbox",
-    default: true
-}, {
-    binding: "select",
-    name: "Select",
-    help: "Foo",
-    field: "select",
-    default: "a",
-    options: [{ value: "a", content: "A" }, { value: "b", content: "B" }]
-}];
-
 const teams = [{
     id: 0,
     name: "Order",
     color: "black",
-    playerLimit: 1
+    playerLimit: 5
 }, {
     id: 1,
     name: "Chaos",
@@ -99,10 +61,6 @@ function sendInitialData(conn) {
        conn.emit("playerlist-add", p); 
     });
     
-    playerSettings.forEach(p => {
-       conn.emit("settinglist-add", Object.assign({}, p, { host: false })); 
-    }); 
-    
     adminSettings.forEach(p => {
        conn.emit("settinglist-add", Object.assign({}, p, { host: true })); 
     });    
@@ -116,43 +74,69 @@ function broadcast(name, data) {
     });
 }
 
-io.on("connection", (conn) => {
+function sendHeartbeat() {
+    connectionLobbyServer.emit('heartbeat', {
+        id: lobbyConf.id,
+        name: lobbyConf.name,
+        owner: lobbyConf.owner,
+        gamemodeName: lobbyConf.gamemodeName,
+        playerLimit: lobbyConf.playerLimit,
+        playerCount: Object.keys(connections).length,
+        requirePassword: false
+    });
+}
+
+const connectionLobbyServer = io.connect("http://127.0.0.1:9089", {reconnection: true, forceNew: true});
+connectionLobbyServer.on("connect", () => {
+    connectionLobbyServer.emit('heartbeat', {
+        id: lobbyConf.id,
+        name: lobbyConf.name,
+        owner: lobbyConf.owner,
+        gamemodeName: lobbyConf.gamemodeName,
+        playerLimit: lobbyConf.playerLimit,
+        playerCount: Object.keys(connections).length,
+        requirePassword: false
+    });
+});
+
+lobbyServer.on("connection", (conn) => {
     let id = playerId++;
     let player;
     connections[id] = conn;
     player_id++;
     
     conn.on("lobby-connect", data => {
-        conn.emit("lobby-connect", {
-            ok: true,
-            name: name,
-            creator: creator,
-            gamemode: gamemode,
-            playerId: player_id
-        });
         const firstFree = teams.filter(t => t.playerLimit - players.filter(p => p.teamId === t.id).length > 0)[0];
-        sendInitialData(conn);
-
         player = {
             id: id,
-            name: data.name,
+            idServer: data.idServer,
+            username: data.username,
             teamId: firstFree.id,
-            championId: 0,
-            skinIndex: 0,
-            spell1id: 7,
-            spell2id: 4
+            isHost: Object.keys(connections).length == 1 ? true : false,
         };
         
         players.push(player);        
         broadcast("playerlist-add", player);
-    }); 
+        conn.emit("lobby-connect", {
+            ok: true,
+            name: lobbyConf.name,
+            owner: lobbyConf.owner,
+            gamemodeName: lobbyConf.gamemodeName,
+            playerId: player_id
+        });
+        sendInitialData(conn);
+        sendHeartbeat();
+    });
+
+    conn.on("host", () => {
+        conn.emit("host", {
+            isHost: player.isHost
+        });
+    });
     
     conn.on("lobby-setting", data => {
-        let setting = playerSettings.filter(x => x.binding === data["setting-binding"])[0];      
-        if (!setting) {
-            setting = adminSettings.filter(x => x.binding === data["setting-binding"])[0];
-            setting.host = true;
-        }  
+        setting = adminSettings.filter(x => x.binding === data["setting-binding"])[0];
+        setting.host = true;
         
         console.log(setting.binding + " set to " + data.value);
         if (setting.binding == "map"){
@@ -185,22 +169,20 @@ io.on("connection", (conn) => {
             });
         }
             
-        if (setting.host) {  
-            Object.keys(connections).forEach(k => {
-                if (connections[k] !== conn) {
-                    connections[k].emit("settinglist-update", { 
-                        binding: setting.binding, 
-                        value: data.value 
-                    });
-                }
-            });
-        }
+        Object.keys(connections).forEach(k => {
+            if (connections[k] !== conn) {
+                connections[k].emit("settinglist-update", { 
+                    binding: setting.binding, 
+                    value: data.value 
+                });
+            }
+        });
     });
     
     conn.on("chat-message", data => {
         broadcast("chat-message", { 
             timestamp: new Date().getTime(), 
-            sender: player.name, 
+            sender: player.username, 
             message: data.message 
         });
     });
@@ -219,6 +201,24 @@ io.on("connection", (conn) => {
         broadcast("playerlist-remove", { 
             id 
         });
+        if(Object.keys(connections).length == 0) {
+            connectionLobbyServer.emit("close", {
+                id: lobbyConf.id
+            });
+            process.exit();
+        }
+        else {
+            if(player.isHost) {
+                var firstPlayer = Object.keys(players)[0];
+                players[firstPlayer].isHost = true;
+                lobbyConf.owner = players[firstPlayer].username;
+                connections[players[firstPlayer].id].emit("host", {
+                    isHost: true
+                });
+                broadcast("playerlist-update", players[firstPlayer]);
+            }
+            sendHeartbeat();
+        }
     });
     conn.on("start-game", () => {
         var GameFactory = require('./app/factories/GameFactory.js');
@@ -229,4 +229,4 @@ io.on("connection", (conn) => {
     });
 });
 
-repl.start('> ').context.broadcast = broadcast;
+//repl.start('> ').context.broadcast = broadcast;

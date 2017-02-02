@@ -6,32 +6,34 @@ function LobbyFactory(){
   return {
     createLobby: createLobby
   };
-  function createLobby(options, port, configPath, GameServerPort){
+  function createLobby(id, options, port, configPath, GameServerPort){
     var lobby;
 
     lobby = {
+        id: id,
         name: options.name,
-        creator: options.creator,
+        owner: options.owner,
         playerLimit: options.playerLimit,
         playerCount: 0,
-        gameMode: options.gamemodeName,
+        gamemodeName: options.gamemodeName,
         requirePassword: false,
         address: "http://localhost",
         port: port
     };
     module.exports = {
+        id: id,
         name: options.name,
-        creator: options.creator,
+        owner: options.owner,
         playerLimit: options.playerLimit,
         playerCount: 0,
-        gameMode: options.gamemodeName,
+        gamemodeName: options.gamemodeName,
         requirePassword: false,
         address: "http://localhost",
         port: port
     };
     var fork = require('child_process').fork;
     //We start a Lobby process and we send the port
-    var child = fork('lobby', [port, configPath, GameServerPort]);
+    var child = fork('lobby', [JSON.stringify(lobby), port, configPath, GameServerPort]);
     return lobby;
   }
 }
