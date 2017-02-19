@@ -1,7 +1,7 @@
 var fs = require("fs");
 var child_process = require("child_process");
 
-exports.startGameServer = function(players, gameServerPort, path, map) {
+exports.startGameServer = function(players, gameServerPort, path, map, LobbyServerpath) {
     if (players != null){
         var config = fs.readFileSync("./Config/config.json");
         var configData = JSON.parse(config);
@@ -13,9 +13,8 @@ exports.startGameServer = function(players, gameServerPort, path, map) {
         var max = players.length - 1;
         while (count <= max){
             objToJSON.players[count] = new Object();
-            objToJSON.players[count]["runes"] = new Object();
             objToJSON.players[count].rank = "DIAMOND";
-            objToJSON["players"][count].name = players[count].name;
+            objToJSON["players"][count].name = players[count].username;
             objToJSON["players"][count].champion = dictChamps[players[count].championId];
             objToJSON["players"][count].team = dictTeams[players[count].teamId];
             objToJSON["players"][count].skin = players[count].skinIndex;
@@ -23,6 +22,7 @@ exports.startGameServer = function(players, gameServerPort, path, map) {
             objToJSON["players"][count].summoner2 = "FLASH";
             objToJSON["players"][count].ribbon = 2;
             objToJSON["players"][count].icon = 0;
+            objToJSON.players[count]["runes"] = new Object();
             objToJSON["players"][count]["runes"] = fillRune();
             count++;
         }
@@ -34,16 +34,18 @@ exports.startGameServer = function(players, gameServerPort, path, map) {
         objToJSON["gameInfo"]["MINION_SPAWNS_ENABLED"] = true;
         var args = [];
         args[0] = "--config"
-        args[1] =  __dirname  + "/config/GameInfo.json"
+        args[1] =  LobbyServerpath + "/config/GameInfo.json"
         args[2] = "--port";
         args[3] = gameServerPort;
         var readyToJSON = JSON.stringify(objToJSON);
-        fs.writeFile("./config/GameInfo.json", readyToJSON, (err) => {
+        console.log(args[1]);
+        fs.writeFile("././config/GameInfo.json", readyToJSON, (err) => {
             if (err) throw err;
-                child_process.execFile(path, args, {cwd: configData.pathToFolder, maxBuffer: 1024 * 90000}, (error) => {
+                child_process.execFile(path, args, {cwd: configData.pathToFolder, maxBuffer: 1024 * 90000}, (error, stdout) => {
                     if (error){
                         throw error;
                     }
+                    console.log(stdout);
                 });
         });
     }   

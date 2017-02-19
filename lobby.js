@@ -222,9 +222,10 @@ lobbyServer.on("connection", (conn) => {
     });
     conn.on("start-game", () => {
         var GameFactory = require('./app/factories/GameFactory.js');
-        GameFactory.startGameServer(players, gameServerPort, path, map);
+        GameFactory.startGameServer(players, gameServerPort, path, map, __dirname);
         broadcast("start-game", { 
-            gameServerPort
+            gameServerPort,
+            playerId
         });
     });
 });
