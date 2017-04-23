@@ -17,6 +17,8 @@ const repl = require('repl');
 
 var map = 1;
 var player_id = 0;
+var championSelectStarted = false;
+var playersReady = 0;
 
 const adminSettings = [{
     binding: "available-champions",
@@ -224,10 +226,32 @@ lobbyServer.on("connection", (conn) => {
         var GameFactory = require('./app/factories/GameFactory.js');
         GameFactory.startGameServer(players, gameServerPort, path, map, __dirname);
         broadcast("start-game", { 
-            gameServerPort,
-            playerId
+            gameServerPort
         });
     });
+    conn.on("start-championselect", () => {
+        championSelectStarted = true;
+        broadcast("start-championselect");
+    });
+    conn.on("select-champion", (data) => {
+        selectChampion(player, data.championId)
+        broadcast("start-championselect", { 
+            gameServerPort
+        });
+    });
+    conn.on("lock-champion", () => {
+        lockChampion()
+    });
 });
+function selectChampion(player, championId){
+    player.championId = championId;
+}
+function lockChampion(){
+    playersReady++;
+    if (Object.keys(connections).length == playersReady){
+        //Ready to start the game
+        console.log("ready to launch")
+    }
+}
 
 //repl.start('> ').context.broadcast = broadcast;
